@@ -7,16 +7,25 @@ import smtplib
 from ics import Calendar, Event
 
 
+all_users = {}
+all_events = {}
+all_events_on_moderate = {}
+free_event_id = 0
+bot = telebot.TeleBot('6189215832:AAGBAu2VGDJ3CsNUy1DiV8O_zQXfemvVlbQ');
+
+
 class Event:
     def __init__(this):
-        this.title:str
-        this.description:str # многострочное описание + ссылки на ресурсы в тексте + ссылка на видео
         this.photos = []
-        this.rang:int # изначально 0, можно повысить или понизить хранит (+ или - и id пользователя)
+        this.title:str = ""
+        this.description:str = "" # многострочное описание + ссылки на ресурсы в тексте + ссылка на видео
+        this.time = 0
+        this.year:int = "нет ограничений"
+        this.max_people = "не ограничено"
+        this.pay:int = "бесплатно"
         this.tags = [] # при добавлении новых тегов они добавляются в Tags
-        this.pay:int
-        this.year:int
-        this.max_people
+        this.location = 0
+        this.rang:int = 0 # изначально 0, можно повысить или понизить хранит (+ или - и id пользователя)
 
     def get_string_event(this):
         return f"""{this.title}
@@ -30,10 +39,9 @@ class Event:
 class User:
     def __init__(this, name, status = "Пользователь"):
         this.name:str = name
-        this.vk_id:int
         this.status:str = status
         this.reputation:int = 0 # репутация организатора
-        this.last_location = None
+        this.vk_id:int # кнопка привязки/отвязка соцсети
         # подписки
         this.subscription_eventors = []
         this.subscription_tags = []
@@ -42,13 +50,9 @@ class User:
 
         this.remind_a = [] # напоминание за
 
+        this.event_ids = [] # все эвенты организатора 
 
-
-
-all_users = {}
-all_events = []
-bot = telebot.TeleBot('6189215832:AAGBAu2VGDJ3CsNUy1DiV8O_zQXfemvVlbQ');
-
+        this.last_location = None
 
 
 
@@ -97,8 +101,34 @@ def rename(message):
 
 
 
+def setnameevent(message, event:Event):
+    event.title = message.text;
+    bot.send_message(message.chat.id, "Введите описание")
+    bot.register_next_step_handler(message, setdescrevent, event)
 
 
+def setdescrevent(message, event:Event):
+    event.description = message.text;
+    bot.send_message(message.chat.id, "Введите теги через пробел")
+    bot.register_next_step_handler(message, settegevent, event)
+
+def settegevent(message, event:Event):
+    event.tags = message.text.split();
+    bot.send_message(message.chat.id, "Введите возростное ограничение")
+    bot.register_next_step_handler(message, setageevent, event)
+
+def setageevent(message, event:Event):
+    event.year = message.text;
+    bot.send_message(message.chat.id, "Введите цену")
+    bot.register_next_step_handler(message, setpayevent, event)
+
+def setpayevent(message, event:Event):
+    global free_event_id
+    event.pay = message.text;
+    all_events_on_moderate[free_event_id] = event;
+    bot.send_message(message.chat.id, "Событие успешно создано и отправлено на проверку модераторам")
+    free_event_id += 1
+    
 
 
 @bot.callback_query_handler(func=lambda callback: callback.data)
@@ -107,6 +137,24 @@ def check_callback_data(callback):
         bot.send_message(callback.message.chat.id, "Введите новое имя")
         bot.register_next_step_handler(callback.message, rename)
 
+    elif callback.data == "crevent":
+        event = Event();
+        bot.send_message(callback.message.chat.id, "Введите название события")
+        bot.register_next_step_handler(callback.message, setnameevent, event)
+
+    elif callback.data == "eventsmoderateyes":
+        if(len(all_events_on_moderate.values()) > 0):
+            key = list(all_events_on_moderate)[0]
+            all_events[key] = all_events_on_moderate[key];
+            del all_events_on_moderate[key];
+            bot.send_message(callback.message.chat.id, "Принято")
+
+    
+    elif callback.data == "eventmoderateno":
+        if(len(all_events_on_moderate.values()) > 0):
+            key = list(all_events_on_moderate)[0]
+            del all_events_on_moderate[key];
+            bot.send_message(callback.message.chat.id, "Отклонено")
 
 
 
@@ -201,6 +249,22 @@ def get_text_messages(message):
 
         case "удалить мероприятие":
             ...
+
+        case "мероприятия на модерацию":
+            if(len(all_events_on_moderate) > 0):
+                kb2 = types.InlineKeyboardMarkup()
+                btn1 = types.InlineKeyboardButton("Да", callback_data="eventsmoderateyes")
+                btn2 = types.InlineKeyboardButton("Нет", callback_data="eventmoderateno")
+
+                kb2.add(btn1, btn2);
+         
+                bot.send_message(message.chat.id, "Проверить:")
+                key = list(all_events_on_moderate)[0]
+                bot.send_message(message.chat.id, all_events_on_moderate[key].get_string_event(), reply_markup=kb2)
+
+            else:
+                bot.send_message(message.chat.id, "Мероприятий на проверку пока нет")
+
 
 
 
