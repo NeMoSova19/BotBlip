@@ -11,6 +11,15 @@ all_events = {} # evn_id: [usr_id, Event]
 all_events_on_moderate = [] # [usr_id, evn_id, Event]
 all_tags = [] # str Tags
 free_event_id = 0
+day_of_week = {
+    1: "Понедельник",
+    2: "Вторник",
+    3: "Среду",
+    4: "Четверг",
+    5: "Пятницу",
+    6: "Субботу",
+    7: "Воскресенье",
+                          }
 bot = telebot.TeleBot('6189215832:AAGBAu2VGDJ3CsNUy1DiV8O_zQXfemvVlbQ');
 
 
@@ -46,13 +55,21 @@ class Event:
             return False;
 
     def get_string_event(this):
-        return f"""{this.title}
-Описание: {this.description}
-Начало: {this.start_datetime}
-Конец: {this.end_datetime}
-Возрастное ограничение: {this.year}
-Количество мест: {this.max_people}
-Оплата: {this.pay}"""
+        desc = "нету" if this.description==None else this.description; 
+        end = "не указан" if this.end_datetime==None else this.end_datetime; 
+        year = "нету" if (this.year in (None, "нет", "")) else this.year; 
+        mpeop = "неограниченно" if (this.max_people in (None, "")) else this.max_people; 
+        pay = "бесплатно" if (this.max_people in (None, "", "нет", "нету")) else this.max_people; 
+
+
+        return f"""🌏{this.title}🌏
+🗒Описание: {desc}
+🕑Начало: {this.start_datetime}
+🕔Конец: {end}
+🙅‍Возрастное ограничение: {year}
+🪑Количество мест: {mpeop}
+💸Оплата: {pay}
+Оценка: {this.rang} 👍👎"""
 
 
 
@@ -61,12 +78,12 @@ class User:
         this.name:str = name
         this.status:str = status
         this.reputation:int = 0 # репутация организатора
-        this.vk_id:int # кнопка привязки/отвязка соцсети
+        this.vk_id = None # кнопка привязки/отвязка соцсети
         # подписки
         this.subscription_eventors = []
         this.subscription_tags = []
         this.subscription_place = [] # координаты радиус
-        this.subscription_days_week = [] # координаты радиус
+        this.subscription_days_week = [] 
         # для поиска
         this.searchtags = []
 
@@ -77,27 +94,47 @@ class User:
         this.last_location = None
 
 
+def distance(my_location, event_location):
+    lo1 = radians(my_location[0])
+    la1 = radians(my_location[1])
 
+    lo2 = radians(float(event_location[0]))
+    la2 = radians(float(event_location[1]))
+
+    D_Lo = lo2 - lo1
+    D_La = la2 - la1
+
+    P = sin(D_La / 2)**2 + cos(la1) * cos(la2) * sin(D_Lo / 2)**2
+    Q = 2 * asin(sqrt(P))
+    R_km = 6371
+    return(Q * R_km)
 
 def send_events(arr:list, id_):
+
     for i in arr:
+        img = None
         if(i.main_photo):
             img = open(i.main_photo, 'rb')
-            bot.send_photo(id_, img)
-        
+            
         kb2 = types.InlineKeyboardMarkup()
         if isinstance(i.pay_web, str):
             btn1 = types.InlineKeyboardButton("Покупка", url=i.pay_web)
             kb2.add(btn1)
         if isinstance(i.location, list):
             btn2 = types.InlineKeyboardButton("Показать на карте", url= f"https://yandex.ru/maps/?ll={i.location[1]},{i.location[0]}&z=17&mode=search&whatshere[point]={i.location[1]},{i.location[0]}&whatshere[zoom]=17")
-            kb2.add(btn2)
-        
-        bot.send_message(id_, i.get_string_event(), reply_markup=kb2)
-        
+            kb2.add(btn2)   
+            
+        if(img):
+            msg = bot.send_photo(id_, img, i.get_string_event(), reply_markup=kb2);
+        else:
+            msg = bot.send_message(id_, i.get_string_event(), reply_markup=kb2)
+
+        list_img = []
         for i in i.photos:
-            img = open(i, 'rb')
-            bot.send_photo(id_, img)
+            list_img.append(open(i, 'rb'))
+        
+        if len(list_img) != 0:
+            bot.send_media_group(id_, media=[types.InputMediaPhoto(i) for i in list_img]);
 
 @bot.message_handler(content_types=["location"])
 def location(message):
@@ -112,7 +149,7 @@ def location(message):
 
         bot.send_message(message.chat.id, "Выберите радиус поиска", reply_markup=kb)
 
-def profil(message):#########################################################################################################################
+def profil(message):
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
     user = all_users[message.chat.id];
     if(user.status == "Пользователь"):
@@ -125,7 +162,12 @@ def profil(message):############################################################
     name = user.name
     status = user.status
 
-    about_user = f"Имя: {name}\nСтатус: {status}"
+    about_user = f"Имя: {name}\nСтатус: {status}\n"
+    if status == "Организатор":
+        about_user += f"Репутация: {user.reputation}\n"
+
+    d = "нет данных" if (user.vk_id == None) else user.vk_id
+    about_user += f"Аккаунт VK: {d}\nПодписки:\nСкоро..."
 
     kb2 = types.InlineKeyboardMarkup();
     btn1 = types.InlineKeyboardButton("изменить имя", callback_data="rename")
@@ -134,7 +176,7 @@ def profil(message):############################################################
     bot.send_message(message.chat.id, "Профиль:", reply_markup=kb)
     bot.send_message(message.chat.id, about_user, reply_markup=kb2)
 
-def rename(message):################################################################################
+def rename(message):
     all_users[message.chat.id].name = message.text
     bot.send_message(message.chat.id, "Имя установлено")
     profil(message)
@@ -338,7 +380,7 @@ def check_callback_data(callback):
             btn61 =types.InlineKeyboardButton("Ссылка на оплату", callback_data="seteventpay_web")
             btn7 = types.InlineKeyboardButton("Количество мест", callback_data="seteventplaces")
             btn8 = types.InlineKeyboardButton("Местоположение", callback_data="seteventgeo")
-            btn9 = types.InlineKeyboardButton("Время начала", callback_data="seteventstart")
+            btn9 = types.InlineKeyboardButton("Время начала", callback_data="seteventstart")   #######################
             btn10 =types.InlineKeyboardButton("Время конца", callback_data="seteventend")
             btn11 =types.InlineKeyboardButton("Теги", callback_data="seteventtags")
             btn12 =types.InlineKeyboardButton("Предпросмотр", callback_data="previewevent")
@@ -457,7 +499,7 @@ def check_callback_data(callback):
                 bot.send_message(callback.message.chat.id, "Действия:", reply_markup=kb)
 
             else:
-                bot.send_message(callback.message.chat.id, "Не указано Название или Описание")
+                bot.send_message(callback.message.chat.id, "Какие-то из обязательных параметров не указаны")
 
         case "sendtoverefication2":
             if(all_users[callback.message.chat.id].pre_event.title and all_users[callback.message.chat.id].pre_event.start_datetime and all_users[callback.message.chat.id].pre_event.location):
@@ -486,7 +528,7 @@ def check_callback_data(callback):
                 bot.send_message(callback.message.chat.id, "Действия:", reply_markup=kb)
 
             else:
-                bot.send_message(callback.message.chat.id, "Не указано Название или Описание")
+                bot.send_message(callback.message.chat.id, "Какие-то из обязательных параметров не указаны")
 
         case "addtagtousersearch":
             tag = commands[1]
@@ -500,27 +542,23 @@ def check_callback_data(callback):
                     if t in tags:
                         arr.append(all_events[i][1])
                         break;
-            send_events(arr, callback.message.chat.id);
+            send_events(arr, callback.message.chat.id)
+
+        case "findweekday":
+            day = int(commands[1])
+            arr = []
+            for i in all_events:
+                all_events[i][1].start_datetime.isoweekday()
+                if all_events[i][1].start_datetime.isoweekday() == day and all_events[i][1].start_datetime > datetime.datetime.now():
+                    arr.append(all_events[i][1])
+
+            if len(arr) == 0:
+                bot.send_message(callback.message.chat.id, "Ничего не нашлось")
+                return;
+
+            bot.send_message(callback.message.chat.id, f"Вот мероприятия на {day_of_week[day]}")
+            send_events(arr, callback.message.chat.id)
                 
-
-
-def distance(my_location, event_location):
-    lo1 = radians(my_location[0])
-    la1 = radians(my_location[1])
-
-    lo2 = radians(float(event_location[0]))
-    la2 = radians(float(event_location[1]))
-
-    D_Lo = lo2 - lo1
-    D_La = la2 - la1
-
-    P = sin(D_La / 2)**2 + cos(la1) * cos(la2) * sin(D_Lo / 2)**2
-    Q = 2 * asin(sqrt(P))
-    R_km = 6371
-    return(Q * R_km)
-
-
-
 
 
 
@@ -628,43 +666,25 @@ def get_text_messages(message):
                 
                 send_events(arr, message.chat.id)
 
-        #case "на этой недели":
-        #    now = datetime.datetime.now()
-        #    _, this_week, _ = datetime.datetime.isocalendar()
-        #    arr = []
-        #    for i in all_events:
-        #        evn = all_events[i][1]
-        #        _, _week, _ = evn.start_datetime.isocalendar()
-        #        if(evn.start_datetime > now and this_week == _week):
-        #            arr.append(evn);
-        #    if len(arr) == 0:
-        #        bot.send_message(message.chat.id, "На этой недели мероприятий не найдено")
-        #        
-        #    else:
-        #        arr = sorted(arr, key=lambda x: x.start_datetime, reverse=True)
-        #
-        #        bot.send_message(message.chat.id, "Вот мероприятия на этой недели:")
-        #        
-        #        for i in arr:
-        #
-        #            if(i.main_photo):
-        #                img = open(i.main_photo, 'rb')
-        #                bot.send_photo(message.chat.id, img)
-        #            
-        #            kb2 = types.InlineKeyboardMarkup()
-        #            if isinstance(i.pay_web, str):
-        #                btn1 = types.InlineKeyboardButton("Покупка", url=i.pay_web)
-        #                kb2.add(btn1)
-        #            if isinstance(i.location, list):
-        #                btn2 = types.InlineKeyboardButton("Показать на карте", url= f"https://yandex.ru/maps/?ll={i.location[1]},{i.location[0]}&z=17&mode=search&whatshere[point]={i.location[1]},{i.location[0]}&whatshere[zoom]=17")
-        #                kb2.add(btn2)
-        #            
-        #            bot.send_message(message.chat.id, i.get_string_event(), reply_markup=kb2)
-        #            
-        #            for i in i.photos:
-        #                img = open(i, 'rb')
-        #                bot.send_photo(message.chat.id, img)
+        case "на этой недели":
+            now = datetime.datetime.now()
+            now_week = now.isocalendar()[1]
 
+            arr = []
+            for i in all_events:
+                evn = all_events[i][1]
+                if(evn.start_datetime > now and now_week == evn.start_datetime.isocalendar()[1]):
+                    arr.append(evn);
+            if len(arr) == 0:
+                bot.send_message(message.chat.id, "На этой недели мероприятий не найдено")
+                
+            else:
+                arr = sorted(arr, key=lambda x: x.start_datetime, reverse=True)
+        
+                bot.send_message(message.chat.id, "Вот мероприятия на этой недели:")
+
+                send_events(arr, message.chat.id)
+                
         case "поиск по тегам":
             if len(all_tags) == 0:
                 bot.send_message(message.chat.id, "Тегов пока нет, так как организаторы не создали не одного мероприятия");
@@ -679,9 +699,23 @@ def get_text_messages(message):
             kb2.add(types.InlineKeyboardButton("Поиск", callback_data=f"searchfortags"))
             bot.send_message(message.chat.id, "Теги:", reply_markup=kb2);
 
-
-        case "поиск по дням":
-            ...
+        case "поиск по дням":############################################################
+            kb2 = types.InlineKeyboardMarkup()
+            btn1 = types.InlineKeyboardButton("Понедельник", callback_data=f"findweekday {1}")
+            btn2 = types.InlineKeyboardButton("Вторник",     callback_data=f"findweekday {2}")
+            btn3 = types.InlineKeyboardButton("Среда",       callback_data=f"findweekday {3}")
+            btn4 = types.InlineKeyboardButton("Четверг",     callback_data=f"findweekday {4}")
+            btn5 = types.InlineKeyboardButton("Пятница",     callback_data=f"findweekday {5}")
+            btn6 = types.InlineKeyboardButton("Суббота",     callback_data=f"findweekday {6}")
+            btn7 = types.InlineKeyboardButton("Воскресенье", callback_data=f"findweekday {7}")
+            kb2.add(btn1)
+            kb2.add(btn2)
+            kb2.add(btn3)
+            kb2.add(btn4)
+            kb2.add(btn5)
+            kb2.add(btn6)
+            kb2.add(btn7)
+            bot.send_message(message.chat.id, "Выберите день недели", reply_markup=kb2)
             
         case "поиск по радиусу":
             kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -698,14 +732,36 @@ def get_text_messages(message):
         case "мероприятия на модерацию":
             if(len(all_events_on_moderate) > 0):
                 kb2 = types.InlineKeyboardMarkup()
-                btn1 = types.InlineKeyboardButton("Да", callback_data="eventsmoderateyes")
-                btn2 = types.InlineKeyboardButton("Нет", callback_data="eventmoderateno")
+                btn11 = types.InlineKeyboardButton("Да", callback_data="eventsmoderateyes")
+                btn22 = types.InlineKeyboardButton("Нет", callback_data="eventmoderateno")
 
-                kb2.add(btn1, btn2);
          
                 bot.send_message(message.chat.id, "Проверить:")
-                _, _, evn = all_events_on_moderate[0];
-                bot.send_message(message.chat.id, evn.get_string_event(), reply_markup=kb2)
+
+                i = all_events_on_moderate[0][2];
+                id_ = message.chat.id
+
+                bot.send_message(id_, "Главное фото:")
+                if(i.main_photo):
+                    img = open(i.main_photo, 'rb')
+                    bot.send_photo(id_, img)
+
+                bot.send_message(id_, "Дополнительные фото:")
+                for j in i.photos:
+                    img = open(j, 'rb')
+                    bot.send_photo(id_, img)
+
+                bot.send_message(id_, "Остальное:")
+                if isinstance(i.pay_web, str):
+                    btn1 = types.InlineKeyboardButton("Покупка", url=i.pay_web)
+                    kb2.add(btn1)
+                if isinstance(i.location, list):
+                    btn2 = types.InlineKeyboardButton("Показать на карте", url= f"https://yandex.ru/maps/?ll={i.location[1]},{i.location[0]}&z=17&mode=search&whatshere[point]={i.location[1]},{i.location[0]}&whatshere[zoom]=17")
+                    kb2.add(btn2)
+            
+                kb2.add(btn11, btn22);
+
+                bot.send_message(id_, i.get_string_event(), reply_markup=kb2)
 
             else:
                 bot.send_message(message.chat.id, "Мероприятий на проверку пока нет")
@@ -832,21 +888,11 @@ bot.polling()
 
 
 
-# botblip@mail.ru
-# пароль OaRVGrry1y3$
+
 
 #Thread(target = main).start();
-# bot.register_next_step_handler(message, func)
 
 
 # ToDo
 
-#+ сегодня завтра на этой неделе и т.д. 
-#+- опред. местополож. и поиск в радиусе 5 км
-#+ возможность купить билеты
-#- напоминание. ссылка в личный календарь или напоминание в боте
-
-#++ местоположение, дата, время, цена, ссылка на оплату, возрастные ограничения
-#+ редактирование и удаление своих мероприятий
-
-#+ модерация
+#- напоминание в боте telegram and vk
