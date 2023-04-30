@@ -1,6 +1,7 @@
 ﻿import telebot
 from telebot import types
 import datetime
+import time
 import validators
 from threading import Thread
 from math import radians, cos, sin, asin, sqrt
@@ -18,14 +19,21 @@ day_of_week = {
     4: "Четверг",
     5: "Пятницу",
     6: "Субботу",
-    7: "Воскресенье",
-                          }
+    7: "Воскресенье"}
+day_of_week_norm = {
+    1: "Понедельник",
+    2: "Вторник",
+    3: "Среда",
+    4: "Четверг",
+    5: "Пятница",
+    6: "Суббота",
+    7: "Воскресенье"}
 bot = telebot.TeleBot('6189215832:AAGBAu2VGDJ3CsNUy1DiV8O_zQXfemvVlbQ');
 
 
 
 class Event:
-    def __init__(this):
+    def __init__(this, _id):
         this.main_photo = None;
         this.photos = []
         this.title:str = None
@@ -39,6 +47,7 @@ class Event:
         this.tags = [] # при добавлении новых тегов они добавляются в Tags
         this.location = None
         this.rang:int = 0 # изначально 0, можно повысить или понизить хранит (+ или - и id пользователя)
+        this.id = _id;
 
     def set_data_start(this, dt:str):
         try:
@@ -61,7 +70,6 @@ class Event:
         mpeop = "неограниченно" if (this.max_people in (None, "")) else this.max_people; 
         pay = "бесплатно" if (this.max_people in (None, "", "нет", "нету")) else this.max_people; 
 
-
         return f"""🌏{this.title}🌏
 🗒Описание: {desc}
 🕑Начало: {this.start_datetime}
@@ -80,15 +88,12 @@ class User:
         this.reputation:int = 0 # репутация организатора
         this.vk_id = None # кнопка привязки/отвязка соцсети
         # подписки
-        this.subscription_eventors = []
-        this.subscription_tags = []
-        this.subscription_place = [] # координаты радиус
-        this.subscription_days_week = [] 
+        this.subscription_tags = []      # теги
+        this.subscription_days_week = [] # дни недели
+        this.reminder = {} # {Event_id: [время во сколько будет напоминание:datatime]}
         # для поиска
         this.searchtags = []
-
-        this.remind_a = [] # напоминание за
-
+        # другое
         this.event_ids = [] # все эвенты организатора 
         this.pre_event = None # 
         this.last_location = None
@@ -122,7 +127,9 @@ def send_events(arr:list, id_):
             kb2.add(btn1)
         if isinstance(i.location, list):
             btn2 = types.InlineKeyboardButton("Показать на карте", url= f"https://yandex.ru/maps/?ll={i.location[1]},{i.location[0]}&z=17&mode=search&whatshere[point]={i.location[1]},{i.location[0]}&whatshere[zoom]=17")
-            kb2.add(btn2)   
+            kb2.add(btn2) 
+
+        kb2.add(types.InlineKeyboardButton("Напомнить", callback_data=f"reminder {i.id}"))
             
         if(img):
             msg = bot.send_photo(id_, img, i.get_string_event(), reply_markup=kb2);
@@ -294,7 +301,6 @@ def seteventpay_web(message):
 def check_callback_data(callback):
     global free_event_id;
     commands = callback.data.split()
-
     match commands[0]:
 
         case "rename":
@@ -310,7 +316,7 @@ def check_callback_data(callback):
             send_events([all_events[i][1] for i in usr.event_ids], callback.message.chat.id);
                     
         case "crevent":
-            all_users[callback.message.chat.id].pre_event = Event()
+            all_users[callback.message.chat.id].pre_event = Event(free_event_id)
             kb2 = types.InlineKeyboardMarkup()
             btn1 = types.InlineKeyboardButton("Название", callback_data="seteventtitle")
             btn2 = types.InlineKeyboardButton("Описание", callback_data="seteventdescription")
@@ -480,7 +486,7 @@ def check_callback_data(callback):
                 
                 all_events_on_moderate.append([callback.message.chat.id, free_event_id, all_users[callback.message.chat.id].pre_event]);
                 free_event_id+=1;
-                all_users[callback.message.chat.id].pre_event = Event()
+                #all_users[callback.message.chat.id].pre_event = Event()
                 bot.send_message(callback.message.chat.id, "Успешно отправлено на проверку")
 
                 kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -509,7 +515,7 @@ def check_callback_data(callback):
                 
                 all_events_on_moderate.append([callback.message.chat.id, free_event_id, all_users[callback.message.chat.id].pre_event]);
                 free_event_id+=1;
-                all_users[callback.message.chat.id].pre_event = Event()
+                #all_users[callback.message.chat.id].pre_event = Event()
                 bot.send_message(callback.message.chat.id, "Успешно отправлено на проверку")
 
                 kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -532,7 +538,13 @@ def check_callback_data(callback):
 
         case "addtagtousersearch":
             tag = commands[1]
-            all_users[callback.message.chat.id].searchtags.append(tag)
+            if(tag not in all_users[callback.message.chat.id].searchtags):
+                all_users[callback.message.chat.id].searchtags.append(tag)
+                bot.send_message(callback.message.chat.id, "Добавлен тег в поисковый фильтр");
+                return;
+            
+            all_users[callback.message.chat.id].searchtags.remove(tag)
+            bot.send_message(callback.message.chat.id, "Тег удалён из поискового фильтра");
 
         case "searchfortags":
             arr = []
@@ -542,6 +554,10 @@ def check_callback_data(callback):
                     if t in tags:
                         arr.append(all_events[i][1])
                         break;
+
+            if len(arr) == 0:
+                bot.send_message(callback.message.chat.id, "Мероприятия по указанным тегам не найдены");
+                return;
             send_events(arr, callback.message.chat.id)
 
         case "findweekday":
@@ -558,6 +574,43 @@ def check_callback_data(callback):
 
             bot.send_message(callback.message.chat.id, f"Вот мероприятия на {day_of_week[day]}")
             send_events(arr, callback.message.chat.id)
+
+        case "reminder":
+            ev_id = commands[1]
+            kb2 = types.InlineKeyboardMarkup()
+            btn1 =  types.InlineKeyboardButton("За неделю",   callback_data=f"setremindermin {ev_id} {10080}")
+            btn2 =  types.InlineKeyboardButton("За 3 дня",    callback_data=f"setremindermin {ev_id} {4320}")
+            btn3 =  types.InlineKeyboardButton("За 2 дня",    callback_data=f"setremindermin {ev_id} {2880}")
+            btn4 =  types.InlineKeyboardButton("За 1 день",   callback_data=f"setremindermin {ev_id} {1440}")
+            btn5 =  types.InlineKeyboardButton("За 12 часов", callback_data=f"setremindermin {ev_id} {720}")
+            btn6 =  types.InlineKeyboardButton("За 6 часов",  callback_data=f"setremindermin {ev_id} {360}")
+            btn7 =  types.InlineKeyboardButton("За 3 часа",   callback_data=f"setremindermin {ev_id} {180}")
+            btn8 =  types.InlineKeyboardButton("За 2 часа",   callback_data=f"setremindermin {ev_id} {120}")
+            btn9 =  types.InlineKeyboardButton("За 1 час",    callback_data=f"setremindermin {ev_id} {60}")
+            btn10 = types.InlineKeyboardButton("За 30 минут", callback_data=f"setremindermin {ev_id} {30}")
+            btn11 = types.InlineKeyboardButton("За 1 минуту", callback_data=f"setremindermin {ev_id} {1}")
+            kb2.add(btn1 )
+            kb2.add(btn2 )
+            kb2.add(btn3 )
+            kb2.add(btn4 )
+            kb2.add(btn5 )
+            kb2.add(btn6 )
+            kb2.add(btn7 )
+            kb2.add(btn8 )
+            kb2.add(btn9 )
+            kb2.add(btn10)
+            kb2.add(btn11)
+            bot.send_message(callback.message.chat.id, "За сколько напомнить?", reply_markup=kb2);
+
+        case "setremindermin":
+            ev_id = int(commands[1])
+            minut = int(commands[2])
+            
+            if len(all_users[callback.message.chat.id].reminder.values()) == 0:
+                all_users[callback.message.chat.id].reminder[ev_id] = [all_events[ev_id][1].start_datetime-datetime.timedelta(minutes=minut)]
+            else:
+                all_users[callback.message.chat.id].reminder[ev_id].append(all_events[ev_id][1].start_datetime-datetime.timedelta(minutes=minut))
+
                 
 
 
@@ -692,14 +745,14 @@ def get_text_messages(message):
 
             all_users[message.chat.id].searchtags = [];
             kb2 = types.InlineKeyboardMarkup(row_width=2)
+
             for i in all_tags:
-                print(i)
                 kb2.add(types.InlineKeyboardButton(i, callback_data=f"addtagtousersearch {i}"))
 
             kb2.add(types.InlineKeyboardButton("Поиск", callback_data=f"searchfortags"))
             bot.send_message(message.chat.id, "Теги:", reply_markup=kb2);
 
-        case "поиск по дням":############################################################
+        case "поиск по дням":
             kb2 = types.InlineKeyboardMarkup()
             btn1 = types.InlineKeyboardButton("Понедельник", callback_data=f"findweekday {1}")
             btn2 = types.InlineKeyboardButton("Вторник",     callback_data=f"findweekday {2}")
@@ -732,8 +785,8 @@ def get_text_messages(message):
         case "мероприятия на модерацию":
             if(len(all_events_on_moderate) > 0):
                 kb2 = types.InlineKeyboardMarkup()
-                btn11 = types.InlineKeyboardButton("Да", callback_data="eventsmoderateyes")
-                btn22 = types.InlineKeyboardButton("Нет", callback_data="eventmoderateno")
+                btn11 = types.InlineKeyboardButton("Принять", callback_data="eventsmoderateyes")
+                btn22 = types.InlineKeyboardButton("Отклонить", callback_data="eventmoderateno")
 
          
                 bot.send_message(message.chat.id, "Проверить:")
@@ -861,38 +914,22 @@ def get_text_messages(message):
 
 
 
+def main():
+    while True:
+        now = datetime.datetime.now()
+        for i in all_users: # i - user_id
+            container = all_users[i].reminder # reminder[j] - list
+            for j in container: #j - event_id
+                for k in container[j]:
+                    if(k <= now):
+                        all_users[i].reminder[j].remove(k);
+                        bot.send_message(i, "Сработало напоминание!");
+                        send_events([all_events[j][1]], i);
+                        ... #таймер
+
+        time.sleep(1)
 
 
 
-
-
-
-
+Thread(target=main, args=()).start()
 bot.polling()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#Thread(target = main).start();
-
-
-# ToDo
-
-#- напоминание в боте telegram and vk
