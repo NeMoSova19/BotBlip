@@ -4,8 +4,6 @@ import datetime
 import validators
 from threading import Thread
 from math import radians, cos, sin, asin, sqrt
-#import smtplib
-#from ics import Calendar, Event
 
 
 all_users = {} # usr_id: User
@@ -36,7 +34,6 @@ class Event:
     def set_data_start(this, dt:str):
         try:
             this.start_datetime = datetime.datetime.strptime(dt, "%d.%m.%Y %H:%M")
-            print(this.start_datetime)
             return True;
         except:
             return False;
@@ -44,7 +41,6 @@ class Event:
     def set_data_end(this, dt:str):
         try:
             this.end_datetime = datetime.datetime.strptime(dt, "%d.%m.%Y %H:%M")
-            print(this.end_datetime)
             return True;
         except:
             return False;
@@ -71,6 +67,8 @@ class User:
         this.subscription_tags = []
         this.subscription_place = [] # координаты радиус
         this.subscription_days_week = [] # координаты радиус
+        # для поиска
+        this.searchtags = []
 
         this.remind_a = [] # напоминание за
 
@@ -79,6 +77,27 @@ class User:
         this.last_location = None
 
 
+
+
+def send_events(arr:list, id_):
+    for i in arr:
+        if(i.main_photo):
+            img = open(i.main_photo, 'rb')
+            bot.send_photo(id_, img)
+        
+        kb2 = types.InlineKeyboardMarkup()
+        if isinstance(i.pay_web, str):
+            btn1 = types.InlineKeyboardButton("Покупка", url=i.pay_web)
+            kb2.add(btn1)
+        if isinstance(i.location, list):
+            btn2 = types.InlineKeyboardButton("Показать на карте", url= f"https://yandex.ru/maps/?ll={i.location[1]},{i.location[0]}&z=17&mode=search&whatshere[point]={i.location[1]},{i.location[0]}&whatshere[zoom]=17")
+            kb2.add(btn2)
+        
+        bot.send_message(id_, i.get_string_event(), reply_markup=kb2)
+        
+        for i in i.photos:
+            img = open(i, 'rb')
+            bot.send_photo(id_, img)
 
 @bot.message_handler(content_types=["location"])
 def location(message):
@@ -93,7 +112,7 @@ def location(message):
 
         bot.send_message(message.chat.id, "Выберите радиус поиска", reply_markup=kb)
 
-def profil(message):
+def profil(message):#########################################################################################################################
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
     user = all_users[message.chat.id];
     if(user.status == "Пользователь"):
@@ -115,90 +134,76 @@ def profil(message):
     bot.send_message(message.chat.id, "Профиль:", reply_markup=kb)
     bot.send_message(message.chat.id, about_user, reply_markup=kb2)
 
-def rename(message):
+def rename(message):################################################################################
     all_users[message.chat.id].name = message.text
-    bot.send_message(message.chat.id, "Имя успешно изменено")
+    bot.send_message(message.chat.id, "Имя установлено")
     profil(message)
 
 def seteventtitle(message):
     all_users[message.chat.id].pre_event.title = message.text;
-    bot.send_message(message.chat.id, "Успешно")
+    bot.send_message(message.chat.id, "Название установлено")
 
 def seteventdescription(message):
     all_users[message.chat.id].pre_event.description = message.text;
-    bot.send_message(message.chat.id, "Успешно")
+    bot.send_message(message.chat.id, "Описание установлено")
 
 def seteventmainimg(message):
+    fileID = None;
+
     if(message.photo):
-        print ('message.photo =', message.photo)
         fileID = message.photo[-1].file_id
-        print ('fileID =', fileID)
-        file_info = bot.get_file(fileID)
-        print ('file.file_path =', file_info.file_path)
-        downloaded_file = bot.download_file(file_info.file_path)
-
-        with open(f"MainImage{free_event_id}.jpg", 'wb') as new_file:
-            new_file.write(downloaded_file)
-        all_users[message.chat.id].pre_event.main_photo = f"MainImage{free_event_id}.jpg";
-        bot.send_message(message.chat.id, "Успешно")
-
     elif(message.document):
-        print ('message.photo =', message.photo)
         fileID = message.document.file_id
-        print ('fileID =', fileID)
+
+    if(message.photo or message.document):
+
         file_info = bot.get_file(fileID)
-        print ('file.file_path =', file_info.file_path)
         downloaded_file = bot.download_file(file_info.file_path)
 
-        with open(f"MainImage{free_event_id}.jpg", 'wb') as new_file:
+        path = f"Imgs/MainImage{free_event_id}.jpg"
+
+        with open(path, 'wb') as new_file:
             new_file.write(downloaded_file)
-        all_users[message.chat.id].pre_event.main_photo = f"MainImage{free_event_id}.jpg";
-        bot.send_message(message.chat.id, "Успешно")
+        all_users[message.chat.id].pre_event.main_photo = path;
+        bot.send_message(message.chat.id, "Изображение установлено")
 
     else:
         bot.send_message(message.chat.id, "Изображение не определено")
 
 def addeventimg(message):
+    fileID = None;
+
     if(message.photo):
-        print ('message.photo =', message.photo)
         fileID = message.photo[-1].file_id
-        print ('fileID =', fileID)
-        file_info = bot.get_file(fileID)
-        print ('file.file_path =', file_info.file_path)
-        downloaded_file = bot.download_file(file_info.file_path)
-
-        with open(f"SideImage{free_event_id}{len(all_users[message.chat.id].pre_event.photos)}.jpg", 'wb') as new_file:
-            new_file.write(downloaded_file)
-        all_users[message.chat.id].pre_event.photos.append(f"SideImage{free_event_id}{len(all_users[message.chat.id].pre_event.photos)}.jpg");
-        bot.send_message(message.chat.id, "Успешно")
-
     elif(message.document):
-        print ('message.photo =', message.photo)
         fileID = message.document.file_id
-        print ('fileID =', fileID)
+
+    if(message.photo or message.document):
+
         file_info = bot.get_file(fileID)
-        print ('file.file_path =', file_info.file_path)
         downloaded_file = bot.download_file(file_info.file_path)
 
-        with open(f"SideImage{free_event_id}{len(all_users[message.chat.id].pre_event.photos)}.jpg", 'wb') as new_file:
+        path = f"Imgs/SideImage{free_event_id}{len(all_users[message.chat.id].pre_event.photos)}.jpg";
+
+        with open(path, 'wb') as new_file:
             new_file.write(downloaded_file)
-        all_users[message.chat.id].pre_event.photos.append(f"SideImage{free_event_id}{len(all_users[message.chat.id].pre_event.photos)}.jpg");
-        bot.send_message(message.chat.id, "Успешно")
+        all_users[message.chat.id].pre_event.photos.append(path);
+        bot.send_message(message.chat.id, "Изображение добавлено")
 
     else:
         bot.send_message(message.chat.id, "Изображение не определено")
 
 def seteventage(message):
     all_users[message.chat.id].pre_event.year = message.text;
-    bot.send_message(message.chat.id, "Успешно")
+    bot.send_message(message.chat.id, "Возрастное ограничение установлено")
 
 def seteventpay(message):
     all_users[message.chat.id].pre_event.pay = message.text;
-    bot.send_message(message.chat.id, "Успешно")
+    bot.send_message(message.chat.id, "Цена установлена")
 
 def seteventplaces(message):
     all_users[message.chat.id].pre_event.max_people = message.text;
-    bot.send_message(message.chat.id, "Успешно")
+    bot.send_message(message.chat.id, "Количество мест установлено")
 
 def seteventgeo(message):
     list_geo = message.text.split();
@@ -206,7 +211,7 @@ def seteventgeo(message):
         try:
             [float(i) for i in list_geo]
             all_users[message.chat.id].pre_event.location = list_geo;
-            bot.send_message(message.chat.id, "Успешно")
+            bot.send_message(message.chat.id, "Местоположение установлено")
             return;
         except:
             ...
@@ -214,20 +219,22 @@ def seteventgeo(message):
 
 def seteventtags(message):
     all_users[message.chat.id].pre_event.tags = message.text.split();
+
     for i in all_users[message.chat.id].pre_event.tags:
         if(i not in all_tags):
             all_tags.append(i)
-    bot.send_message(message.chat.id, "Успешно")
+
+    bot.send_message(message.chat.id, "Теги добавлены")
 
 def seteventstart(message):
     if(all_users[message.chat.id].pre_event.set_data_start(message.text)):
-        bot.send_message(message.chat.id, "Успешно")
+        bot.send_message(message.chat.id, "Время начала установлено")
         return;
     bot.send_message(message.chat.id, "Некорректный ввод")
 
 def seteventend(message):
     if(all_users[message.chat.id].pre_event.set_data_end(message.text)):
-        bot.send_message(message.chat.id, "Успешно")
+        bot.send_message(message.chat.id, "Время окончания установлено")
         return;
     bot.send_message(message.chat.id, "Некорректный ввод")
 
@@ -235,7 +242,7 @@ def seteventpay_web(message):
     url = message.text;
     if validators.url(url):
         all_users[message.chat.id].pre_event.pay_web = url;
-        bot.send_message(message.chat.id, "Успешно")
+        bot.send_message(message.chat.id, "Ссылка на оплату установлена")
         return;
     bot.send_message(message.chat.id, "Некорректный адрес")
 
@@ -254,29 +261,11 @@ def check_callback_data(callback):
 
         case "myevents":
             usr = all_users[callback.message.chat.id]
-
-            for ev_id in usr.event_ids:
-                ev = all_events[ev_id][1];
-                
-                if(ev.main_photo):
-                    img = open(ev.main_photo, 'rb')
-                    bot.send_photo(callback.message.chat.id, img)
-                     
-                kb2 = types.InlineKeyboardMarkup()
-                if isinstance(ev.pay_web, str):
-                            btn1 = types.InlineKeyboardButton("Покупка", url=ev.pay_web)
-                            kb2.add(btn1)
-                if isinstance(ev.location, list):
-                            btn2 = types.InlineKeyboardButton("Показать на карте", url= f"https://yandex.ru/maps/?ll={ev.location[1]},{ev.location[0]}&z=17&mode=search&whatshere[point]={ev.location[1]},{ev.location[0]}&whatshere[zoom]=17")
-                            kb2.add(btn2)
-
-                bot.send_message(callback.message.chat.id, ev.get_string_event(), reply_markup=kb2)
-                
-                for i in ev.photos:
-                            img = open(i, 'rb')
-                            bot.send_photo(callback.message.chat.id, img)
-            else:
+            if len(usr.event_ids) == 0:
                 bot.send_message(callback.message.chat.id, "Пусто")
+                return;
+
+            send_events([all_events[i][1] for i in usr.event_ids], callback.message.chat.id);
                     
         case "crevent":
             all_users[callback.message.chat.id].pre_event = Event()
@@ -394,24 +383,8 @@ def check_callback_data(callback):
                 bot.send_message(usr_id, "Ваше мероприятие отклонено")
 
         case "previewevent":
-            if(all_users[callback.message.chat.id].pre_event.main_photo):
-                img = open(all_users[callback.message.chat.id].pre_event.main_photo, 'rb')
-                bot.send_photo(callback.message.chat.id, img)
-            
-            kb2 = types.InlineKeyboardMarkup()
-            if isinstance(all_users[callback.message.chat.id].pre_event.pay_web, str):
-                btn1 = types.InlineKeyboardButton("Покупка", url=all_users[callback.message.chat.id].pre_event.pay_web)
-                kb2.add(btn1)
-            if isinstance(all_users[callback.message.chat.id].pre_event.location, list):
-                btn2 = types.InlineKeyboardButton("Показать на карте", url= f"https://yandex.ru/maps/?ll={all_users[callback.message.chat.id].pre_event.location[1]},{all_users[callback.message.chat.id].pre_event.location[0]}&z=17&mode=search&whatshere[point]={all_users[callback.message.chat.id].pre_event.location[1]},{all_users[callback.message.chat.id].pre_event.location[0]}&whatshere[zoom]=17")
-                kb2.add(btn2)
-            
-            bot.send_message(callback.message.chat.id, all_users[callback.message.chat.id].pre_event.get_string_event(), reply_markup=kb2)
-            
-            for i in all_users[callback.message.chat.id].pre_event.photos:
-                img = open(i, 'rb')
-                bot.send_photo(callback.message.chat.id, img)
-
+            send_events([all_users[callback.message.chat.id].pre_event], callback.message.chat.id)
+           
         case "seteventtitle":
             bot.send_message(callback.message.chat.id, "Введите название")
             bot.register_next_step_handler(callback.message, seteventtitle)
@@ -517,7 +490,17 @@ def check_callback_data(callback):
 
         case "addtagtousersearch":
             tag = commands[1]
-            all_users[callback.message.chat.id]
+            all_users[callback.message.chat.id].searchtags.append(tag)
+
+        case "searchfortags":
+            arr = []
+            tags = all_users[callback.message.chat.id].searchtags;
+            for i in all_events:
+                for t in all_events[i][1].tags:
+                    if t in tags:
+                        arr.append(all_events[i][1])
+                        break;
+            send_events(arr, callback.message.chat.id);
                 
 
 
@@ -538,14 +521,17 @@ def distance(my_location, event_location):
 
 
 
+
+
+
 @bot.message_handler(content_types=['text'])
 def get_text_messages(message):
     if(message.chat.id not in all_users):
         all_users[message.chat.id] = User(message.from_user.first_name)
-        bot.send_message(message.chat.id, f"Приветствую, {all_users[message.chat.id].name}")
+        bot.send_message(message.chat.id, f"Приветствую, {all_users[message.chat.id].name}!")
         
     text = message.text.lower()
-    if((text == "/start") or (text == "на главную") or (text == "/restart")):
+    if text in ("/start", "на главную", "/restart"):
         kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
         kb.add("Профиль")
         kb.add("Пользователь")
@@ -624,25 +610,7 @@ def get_text_messages(message):
                 arr = sorted(arr, key=lambda x: x.start_datetime, reverse=True)
                 bot.send_message(message.chat.id, "Вот мероприятия на сегодня:")
                 
-                for i in arr:
-
-                    if(i.main_photo):
-                        img = open(i.main_photo, 'rb')
-                        bot.send_photo(message.chat.id, img)
-                    
-                    kb2 = types.InlineKeyboardMarkup()
-                    if isinstance(i.pay_web, str):
-                        btn1 = types.InlineKeyboardButton("Покупка", url=i.pay_web)
-                        kb2.add(btn1)
-                    if isinstance(i.location, list):
-                        btn2 = types.InlineKeyboardButton("Показать на карте", url= f"https://yandex.ru/maps/?ll={i.location[1]},{i.location[0]}&z=17&mode=search&whatshere[point]={i.location[1]},{i.location[0]}&whatshere[zoom]=17")
-                        kb2.add(btn2)
-                    
-                    bot.send_message(message.chat.id, i.get_string_event(), reply_markup=kb2)
-                    
-                    for i in i.photos:
-                        img = open(i, 'rb')
-                        bot.send_photo(message.chat.id, img)
+                send_events(arr, message.chat.id)
 
         case "завтра":
             now = datetime.datetime.now()
@@ -658,25 +626,7 @@ def get_text_messages(message):
                 arr = sorted(arr, key=lambda x: x.start_datetime, reverse=True)
                 bot.send_message(message.chat.id, "Вот мероприятия на завтра:")
                 
-                for i in arr:
-
-                    if(i.main_photo):
-                        img = open(i.main_photo, 'rb')
-                        bot.send_photo(message.chat.id, img)
-                    
-                    kb2 = types.InlineKeyboardMarkup()
-                    if isinstance(i.pay_web, str):
-                        btn1 = types.InlineKeyboardButton("Покупка", url=i.pay_web)
-                        kb2.add(btn1)
-                    if isinstance(i.location, list):
-                        btn2 = types.InlineKeyboardButton("Показать на карте", url= f"https://yandex.ru/maps/?ll={i.location[1]},{i.location[0]}&z=17&mode=search&whatshere[point]={i.location[1]},{i.location[0]}&whatshere[zoom]=17")
-                        kb2.add(btn2)
-                    
-                    bot.send_message(message.chat.id, i.get_string_event(), reply_markup=kb2)
-                    
-                    for i in i.photos:
-                        img = open(i, 'rb')
-                        bot.send_photo(message.chat.id, img)
+                send_events(arr, message.chat.id)
 
         #case "на этой недели":
         #    now = datetime.datetime.now()
@@ -716,9 +666,18 @@ def get_text_messages(message):
         #                bot.send_photo(message.chat.id, img)
 
         case "поиск по тегам":
+            if len(all_tags) == 0:
+                bot.send_message(message.chat.id, "Тегов пока нет, так как организаторы не создали не одного мероприятия");
+                return;
+
+            all_users[message.chat.id].searchtags = [];
             kb2 = types.InlineKeyboardMarkup(row_width=2)
             for i in all_tags:
+                print(i)
                 kb2.add(types.InlineKeyboardButton(i, callback_data=f"addtagtousersearch {i}"))
+
+            kb2.add(types.InlineKeyboardButton("Поиск", callback_data=f"searchfortags"))
+            bot.send_message(message.chat.id, "Теги:", reply_markup=kb2);
 
 
         case "поиск по дням":
@@ -769,27 +728,9 @@ def get_text_messages(message):
                     arr = sorted(arr, key=lambda x: x.start_datetime, reverse=True)
 
                     bot.send_message(message.chat.id, "Вот найденные мероприятия:")
+
+                    send_events(arr, message.chat.id)
                     
-                    for i in arr:
-
-                        if(i.main_photo):
-                            img = open(i.main_photo, 'rb')
-                            bot.send_photo(message.chat.id, img)
-                        
-                        kb2 = types.InlineKeyboardMarkup()
-                        if isinstance(i.pay_web, str):
-                            btn1 = types.InlineKeyboardButton("Покупка", url=i.pay_web)
-                            kb2.add(btn1)
-                        if isinstance(i.location, list):
-                            btn2 = types.InlineKeyboardButton("Показать на карте", url= f"https://yandex.ru/maps/?ll={i.location[1]},{i.location[0]}&z=17&mode=search&whatshere[point]={i.location[1]},{i.location[0]}&whatshere[zoom]=17")
-                            kb2.add(btn2)
-                        
-                        bot.send_message(message.chat.id, i.get_string_event(), reply_markup=kb2)
-                        
-                        for i in i.photos:
-                            img = open(i, 'rb')
-                            bot.send_photo(message.chat.id, img)
-
             else:
                 bot.send_message(message.chat.id, "Геолокация устарела, пожалуйста обновите её")
 
@@ -810,25 +751,7 @@ def get_text_messages(message):
 
                     bot.send_message(message.chat.id, "Вот найденные мероприятия:")
                     
-                    for i in arr:
-
-                        if(i.main_photo):
-                            img = open(i.main_photo, 'rb')
-                            bot.send_photo(message.chat.id, img)
-                        
-                        kb2 = types.InlineKeyboardMarkup()
-                        if isinstance(i.pay_web, str):
-                            btn1 = types.InlineKeyboardButton("Покупка", url=i.pay_web)
-                            kb2.add(btn1)
-                        if isinstance(i.location, list):
-                            btn2 = types.InlineKeyboardButton("Показать на карте", url= f"https://yandex.ru/maps/?ll={i.location[1]},{i.location[0]}&z=17&mode=search&whatshere[point]={i.location[1]},{i.location[0]}&whatshere[zoom]=17")
-                            kb2.add(btn2)
-                        
-                        bot.send_message(message.chat.id, i.get_string_event(), reply_markup=kb2)
-                        
-                        for i in i.photos:
-                            img = open(i, 'rb')
-                            bot.send_photo(message.chat.id, img)
+                    send_events(arr, message.chat.id)
 
             else:
                 bot.send_message(message.chat.id, "Геолокация устарела, пожалуйста обновите её")
@@ -850,25 +773,7 @@ def get_text_messages(message):
 
                     bot.send_message(message.chat.id, "Вот найденные мероприятия:")
                     
-                    for i in arr:
-
-                        if(i.main_photo):
-                            img = open(i.main_photo, 'rb')
-                            bot.send_photo(message.chat.id, img)
-                        
-                        kb2 = types.InlineKeyboardMarkup()
-                        if isinstance(i.pay_web, str):
-                            btn1 = types.InlineKeyboardButton("Покупка", url=i.pay_web)
-                            kb2.add(btn1)
-                        if isinstance(i.location, list):
-                            btn2 = types.InlineKeyboardButton("Показать на карте", url= f"https://yandex.ru/maps/?ll={i.location[1]},{i.location[0]}&z=17&mode=search&whatshere[point]={i.location[1]},{i.location[0]}&whatshere[zoom]=17")
-                            kb2.add(btn2)
-                        
-                        bot.send_message(message.chat.id, i.get_string_event(), reply_markup=kb2)
-                        
-                        for i in i.photos:
-                            img = open(i, 'rb')
-                            bot.send_photo(message.chat.id, img)
+                    send_events(arr, message.chat.id)
 
             else:
                 bot.send_message(message.chat.id, "Геолокация устарела, пожалуйста обновите её")
@@ -890,25 +795,7 @@ def get_text_messages(message):
 
                     bot.send_message(message.chat.id, "Вот найденные мероприятия:")
                     
-                    for i in arr:
-
-                        if(i.main_photo):
-                            img = open(i.main_photo, 'rb')
-                            bot.send_photo(message.chat.id, img)
-                        
-                        kb2 = types.InlineKeyboardMarkup()
-                        if isinstance(i.pay_web, str):
-                            btn1 = types.InlineKeyboardButton("Покупка", url=i.pay_web)
-                            kb2.add(btn1)
-                        if isinstance(i.location, list):
-                            btn2 = types.InlineKeyboardButton("Показать на карте", url= f"https://yandex.ru/maps/?ll={i.location[1]},{i.location[0]}&z=17&mode=search&whatshere[point]={i.location[1]},{i.location[0]}&whatshere[zoom]=17")
-                            kb2.add(btn2)
-                        
-                        bot.send_message(message.chat.id, i.get_string_event(), reply_markup=kb2)
-                        
-                        for i in i.photos:
-                            img = open(i, 'rb')
-                            bot.send_photo(message.chat.id, img)
+                    send_events(arr, message.chat.id)
 
             else:
                 bot.send_message(message.chat.id, "Геолокация устарела, пожалуйста обновите её")
