@@ -97,6 +97,9 @@ class User:
         this.event_ids = [] # все эвенты организатора 
         this.pre_event = None # 
         this.last_location = None
+        this.bot_msg_id = None
+
+
 
 
 def distance(my_location, event_location):
@@ -142,8 +145,7 @@ def send_events(arr:list, id_):
         
         if len(list_img) != 0:
             bot.send_media_group(id_, media=[types.InputMediaPhoto(i) for i in list_img]);
-
-@bot.message_handler(content_types=["location"])
+            
 def location(message):
     if message.location is not None:
         all_users[message.chat.id].last_location = [message.location.latitude, message.location.longitude]
@@ -156,37 +158,10 @@ def location(message):
 
         bot.send_message(message.chat.id, "Выберите радиус поиска", reply_markup=kb)
 
-def profil(message):
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
-    user = all_users[message.chat.id];
-    if(user.status == "Пользователь"):
-        kb.add("Стать организатором")
-    elif(user.status == "Организатор"):
-        kb.add("Стать модератором")
-
-    kb.add("На главную")
-
-    name = user.name
-    status = user.status
-
-    about_user = f"Имя: {name}\nСтатус: {status}\n"
-    if status == "Организатор":
-        about_user += f"Репутация: {user.reputation}\n"
-
-    d = "нет данных" if (user.vk_id == None) else user.vk_id
-    about_user += f"Аккаунт VK: {d}\nПодписки:\nСкоро..."
-
-    kb2 = types.InlineKeyboardMarkup();
-    btn1 = types.InlineKeyboardButton("изменить имя", callback_data="rename")
-    kb2.add(btn1);
-
-    bot.send_message(message.chat.id, "Профиль:", reply_markup=kb)
-    bot.send_message(message.chat.id, about_user, reply_markup=kb2)
-
 def rename(message):
     all_users[message.chat.id].name = message.text
     bot.send_message(message.chat.id, "Имя установлено")
-    profil(message)
+    check_callback_data(types.CallbackQuery(message.chat.id,message=message, from_user=None, data = "profile 1", chat_instance=None, json_string=None))
 
 def seteventtitle(message):
     all_users[message.chat.id].pre_event.title = message.text;
@@ -297,15 +272,242 @@ def seteventpay_web(message):
 
 
 
-@bot.callback_query_handler(func=lambda callback: callback.data)
+@bot.callback_query_handler(func=lambda callback: True)
 def check_callback_data(callback):
     global free_event_id;
+    usr_id = callback.message.chat.id;
+
     commands = callback.data.split()
+    try:
+        bot.clear_step_handler(callback.message)
+    except:
+        ...
     match commands[0]:
+    
+        case "main_menu":
+            if all_users[usr_id].bot_msg_id: # удаление предыдущего сообщения бота
+                bot.delete_message(usr_id, all_users[usr_id].bot_msg_id.message_id)
+                all_users[usr_id].bot_msg_id = None
+            
+            kb = types.InlineKeyboardMarkup();
+            kb.add(types.InlineKeyboardButton("Профиль", callback_data="profile 0"))
+            kb.add(types.InlineKeyboardButton("Пользователь", callback_data="user"))
+            if all_users[usr_id].status != "Пользователь":
+                kb.add(types.InlineKeyboardButton("Организатор", callback_data="eventor"))
+            if all_users[usr_id].status == "Модератор":
+                kb.add(types.InlineKeyboardButton("Модератор", callback_data="moderator"))
+
+            all_users[usr_id].bot_msg_id = bot.send_message(usr_id, "Главное меню", reply_markup=kb)
+
+
+        case "profile":
+            kb = types.InlineKeyboardMarkup();
+            user = all_users[usr_id];
+            name = user.name
+            status = user.status
+
+            about_user = f"Имя: {name}\nСтатус: {status}\n"
+            if status == "Организатор":
+                about_user += f"Репутация: {user.reputation}\n"
+
+            d = "нет данных" if (user.vk_id == None) else user.vk_id
+            about_user += f"Аккаунт VK: {d}\nПодписки:\nСкоро..."
+
+            btn1 = types.InlineKeyboardButton("изменить имя", callback_data="rename")
+            kb.add(btn1);
+            if(user.status == "Пользователь"):
+                kb.add(types.InlineKeyboardButton("стать организатором", callback_data="upgrade_eventor"))
+            elif(user.status == "Организатор"):
+                kb.add(types.InlineKeyboardButton("стать модератором", callback_data="upgrade_moder"))
+            kb.add(types.InlineKeyboardButton("на главную", callback_data="main_menu"))
+
+            if int(commands[1]) == 1: # new
+                if all_users[usr_id].bot_msg_id:
+                    bot.delete_message(usr_id, all_users[usr_id].bot_msg_id.message_id)
+            elif all_users[usr_id].bot_msg_id: # replace
+                bot.edit_message_text(chat_id = usr_id, message_id = all_users[usr_id].bot_msg_id.id, text=f"Профиль\n{about_user}")
+                bot.edit_message_reply_markup(chat_id = usr_id, message_id = all_users[usr_id].bot_msg_id.id, reply_markup=kb)
+                return;
+                
+            all_users[usr_id].bot_msg_id = bot.send_message(usr_id, f"Профиль\n{about_user}", reply_markup=kb)
+
+        case "user":
+            kb = types.InlineKeyboardMarkup()
+            btn1 = types.InlineKeyboardButton("Сегодня", callback_data="now")
+            btn2 = types.InlineKeyboardButton("Завтра", callback_data="tomorrow")
+            btn3 = types.InlineKeyboardButton("На этой неделе", callback_data="onweek")
+            btn4 = types.InlineKeyboardButton("Поиск по тегам", callback_data="find_for_tags")
+            btn5 = types.InlineKeyboardButton("Поиск по дням", callback_data="find_for_days")
+            btn6 = types.InlineKeyboardButton("Поиск по радиусу", callback_data="find_for_radius")
+            btn7 = types.InlineKeyboardButton("На главную", callback_data="main_menu")
+
+            kb.add(btn1, btn2, btn3)
+            kb.add(btn4, btn5)
+            kb.add(btn6)
+            kb.add(btn7)
+         
+            bot.edit_message_text(chat_id = usr_id, message_id = all_users[usr_id].bot_msg_id.id, text="Выберите нужное действие")
+            bot.edit_message_reply_markup(chat_id = usr_id, message_id = all_users[usr_id].bot_msg_id.id, reply_markup=kb)
+
+        case "eventor":
+            kb = types.InlineKeyboardMarkup()
+            btn1 = types.InlineKeyboardButton("Мои мероприятия", callback_data="myevents")
+            btn2 = types.InlineKeyboardButton("Создать", callback_data="crevent")
+            btn3 = types.InlineKeyboardButton("Редактировать", callback_data="edevent")
+            btn4 = types.InlineKeyboardButton("Удалить", callback_data="delevent")
+            btn5 = types.InlineKeyboardButton("На главную", callback_data="main_menu")
+            
+            kb.add(btn1);
+            kb.add(btn2);
+            kb.add(btn3, btn4);
+            kb.add(btn5)
+         
+            bot.edit_message_text(chat_id = usr_id, message_id = all_users[usr_id].bot_msg_id.message_id, text = 'Выберите действие')
+            bot.edit_message_reply_markup(usr_id, all_users[usr_id].bot_msg_id.message_id, reply_markup=kb)
+
+        case "moderator":
+            kb = types.InlineKeyboardMarkup()
+            btn1 = types.InlineKeyboardButton("Мероприятия на модерацию", callback_data="myevents")
+            btn2 = types.InlineKeyboardButton("На главную", callback_data="main_menu")
+            kb.add(btn1)
+            kb.add(btn2)
+         
+            bot.edit_message_text(chat_id = usr_id, message_id = all_users[usr_id].bot_msg_id.message_id, text = 'Выберите действие')
+            bot.edit_message_reply_markup(usr_id, all_users[usr_id].bot_msg_id.message_id, reply_markup=kb)
+
 
         case "rename":
             bot.send_message(callback.message.chat.id, "Введите новое имя")
             bot.register_next_step_handler(callback.message, rename)
+
+        case "upgrade_eventor":
+            user = all_users[usr_id];
+            user.status = "Организатор"
+            bot.send_message(usr_id, "Теперь вы организатор")
+
+            if all_users[usr_id].bot_msg_id: # удаление предыдущего сообщения бота
+                bot.delete_message(usr_id, all_users[usr_id].bot_msg_id.message_id)
+                all_users[usr_id].bot_msg_id = None
+
+            callback.data = "profile 1"
+            check_callback_data(callback)
+
+        case "upgrade_moder":
+            user = all_users[usr_id];
+            user.status = "Модератор"
+            bot.send_message(usr_id, "Теперь вы модератор")
+
+            if all_users[usr_id].bot_msg_id: # удаление предыдущего сообщения бота
+                bot.delete_message(usr_id, all_users[usr_id].bot_msg_id.message_id)
+                all_users[usr_id].bot_msg_id = None
+
+            callback.data = "profile 1"
+            check_callback_data(callback)
+
+
+        case "now":
+            now = datetime.datetime.now()
+            arr = []
+            for i in all_events:
+                evn = all_events[i][1]
+                if(evn.start_datetime.day == now.day and evn.start_datetime.time() > now.time()):
+                    arr.append(evn);
+            if len(arr) == 0:
+                bot.send_message(usr_id, "На сегодня мероприятий не найдено")
+                
+            else:
+                arr = sorted(arr, key=lambda x: x.start_datetime, reverse=True)
+                bot.send_message(usr_id, "Вот мероприятия на сегодня:")
+                
+                send_events(arr, usr_id)
+
+        case "tomorrow":
+            now = datetime.datetime.now()
+            arr = []
+            for i in all_events:
+                evn = all_events[i][1]
+                if((evn.start_datetime.day - 1) == now.day):
+                    arr.append(evn);
+            if len(arr) == 0:
+                bot.send_message(usr_id, "На завтра мероприятий не найдено")
+                
+            else:
+                arr = sorted(arr, key=lambda x: x.start_datetime, reverse=True)
+                bot.send_message(usr_id, "Вот мероприятия на завтра:")
+                
+                send_events(arr, usr_id)
+
+        case "onweek":
+            now = datetime.datetime.now()
+            now_week = now.isocalendar()[1]
+
+            arr = []
+            for i in all_events:
+                evn = all_events[i][1]
+                if(evn.start_datetime > now and now_week == evn.start_datetime.isocalendar()[1]):
+                    arr.append(evn);
+            if len(arr) == 0:
+                bot.send_message(usr_id, "На этой недели мероприятий не найдено")
+                
+            else:
+                arr = sorted(arr, key=lambda x: x.start_datetime, reverse=True)
+        
+                bot.send_message(usr_id, "Вот мероприятия на этой недели:")
+
+                send_events(arr, usr_id)
+
+        case "find_for_tags":
+            if len(all_tags) == 0:
+                bot.send_message(usr_id, "Тегов пока нет, так как организаторы не создали не одного мероприятия");
+                return;
+
+            all_users[usr_id].searchtags = [];
+            kb2 = types.InlineKeyboardMarkup(row_width=2)
+
+            for i in all_tags:
+                kb2.add(types.InlineKeyboardButton(i, callback_data=f"addtagtousersearch {i}"))
+
+            kb2.add(types.InlineKeyboardButton("Поиск", callback_data=f"searchfortags"))
+            bot.send_message(usr_id, "Теги:", reply_markup=kb2);
+
+        case "find_for_days":
+            kb = types.InlineKeyboardMarkup()
+            btn1 = types.InlineKeyboardButton("Понедельник", callback_data=f"findweekday {1}")
+            btn2 = types.InlineKeyboardButton("Вторник",     callback_data=f"findweekday {2}")
+            btn3 = types.InlineKeyboardButton("Среда",       callback_data=f"findweekday {3}")
+            btn4 = types.InlineKeyboardButton("Четверг",     callback_data=f"findweekday {4}")
+            btn5 = types.InlineKeyboardButton("Пятница",     callback_data=f"findweekday {5}")
+            btn6 = types.InlineKeyboardButton("Суббота",     callback_data=f"findweekday {6}")
+            btn7 = types.InlineKeyboardButton("Воскресенье", callback_data=f"findweekday {7}")
+            btn8 = types.InlineKeyboardButton("Назад", callback_data="user")
+            btn9 = types.InlineKeyboardButton("На главную", callback_data="main_menu")
+            kb.add(btn1)
+            kb.add(btn2)
+            kb.add(btn3)
+            kb.add(btn4)
+            kb.add(btn5)
+            kb.add(btn6)
+            kb.add(btn7)
+            kb.add(btn8, btn9)
+
+            text = "Выберите день недели"
+            if all_users[usr_id].bot_msg_id: # replace
+                bot.edit_message_text(chat_id = usr_id, message_id = all_users[usr_id].bot_msg_id.id, text=text)
+                bot.edit_message_reply_markup(chat_id = usr_id, message_id = all_users[usr_id].bot_msg_id.id, reply_markup=kb)
+                return;
+                
+            all_users[usr_id].bot_msg_id = bot.send_message(usr_id, text, reply_markup=kb)
+
+        case "find_for_radius":
+            kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            btn = types.KeyboardButton("Определить местоположение", request_location=True)
+            kb.add(btn)
+            if isinstance(all_users[usr_id].last_location, list):
+                kb.add("500 метров", "1 километр", "3 километра", "5 километров")
+            kb.add("На главную")
+
+            bot.send_message(usr_id, "Выберите радиус поиска", reply_markup=kb)
+  
 
         case "myevents":
             usr = all_users[callback.message.chat.id]
@@ -342,7 +544,9 @@ def check_callback_data(callback):
             kb2.add(btn11);
             kb2.add(btn12, btn13);
 
-            bot.send_message(callback.message.chat.id, "Выберите нужные действия (Название, Местоположение и Дата начала - обязательны)", reply_markup=kb2)
+            #bot.send_message(callback.message.chat.id, "Выберите нужные действия (Название, Местоположение и Дата начала - обязательны)", reply_markup=kb2)
+            bot.edit_message_text(chat_id=usr_id, message_id=all_users[usr_id].bot_msg_id.message_id, text="Выберите нужные действия (Название, Местоположение и Дата начала - обязательны)")
+            bot.edit_message_reply_markup(usr_id, all_users[usr_id].bot_msg_id.message_id, reply_markup=kb2);
 
         case "edevent":
             usr = all_users[callback.message.chat.id]
@@ -409,6 +613,7 @@ def check_callback_data(callback):
             del all_events[int(commands[1])]
             bot.send_message(usr_id, "Удалено")
 
+
         case "eventsmoderateyes":
             if(len(all_events_on_moderate) > 0):
                 usr_id, evn_id, evnt = all_events_on_moderate[0]
@@ -429,6 +634,7 @@ def check_callback_data(callback):
 
                 bot.send_message(callback.message.chat.id, "Отклонено")
                 bot.send_message(usr_id, "Ваше мероприятие отклонено")
+
 
         case "previewevent":
             send_events([all_users[callback.message.chat.id].pre_event], callback.message.chat.id)
@@ -605,182 +811,36 @@ def check_callback_data(callback):
         case "setremindermin":
             ev_id = int(commands[1])
             minut = int(commands[2])
-            
+           
             if len(all_users[callback.message.chat.id].reminder.values()) == 0:
                 all_users[callback.message.chat.id].reminder[ev_id] = [all_events[ev_id][1].start_datetime-datetime.timedelta(minutes=minut)]
             else:
                 all_users[callback.message.chat.id].reminder[ev_id].append(all_events[ev_id][1].start_datetime-datetime.timedelta(minutes=minut))
-
+            
                 
 
 
 
 @bot.message_handler(content_types=['text'])
 def get_text_messages(message):
-    if(message.chat.id not in all_users):
-        all_users[message.chat.id] = User(message.from_user.first_name)
-        bot.send_message(message.chat.id, f"Приветствую, {all_users[message.chat.id].name}!")
-        
+
+    usr_id = message.chat.id;
     text = message.text.lower()
-    if text in ("/start", "на главную", "/restart"):
-        kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-        kb.add("Профиль")
-        kb.add("Пользователь")
-        if all_users[message.chat.id].status == "Организатор" or all_users[message.chat.id].status == "Модератор":
-            kb.add("Организатор")
-        if all_users[message.chat.id].status == "Модератор":
-            kb.add("Модератор")
-        bot.send_message(message.chat.id, "Выберите роль", reply_markup=kb)
+
+    if(usr_id not in all_users):
+        all_users[usr_id] = User(message.from_user.first_name)
+        bot.send_message(usr_id, f"Приветствую, {all_users[usr_id].name}!")
         
-    match message.text.lower():
+    if text in ("/start", "/restart"):
+        message.text = "main_menu"
+        bot.delete_message(usr_id, message.message_id) # удаление пользовательской команды
+        check_callback_data(types.CallbackQuery(usr_id,message=message, from_user=None, data = "main_menu", chat_instance=None, json_string=None))
 
-        # 1 страница
-        case "профиль":
-            profil(message)
-
-        case "пользователь":
-            kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
-            kb.add("Сегодня", "Завтра", "На этой недели")
-            kb.add("Поиск по тегам", "Поиск по дням")
-            kb.add("Поиск по радиусу")
-            kb.add("На главную")
-         
-            bot.send_message(message.chat.id, "Выберите нужное действие", reply_markup=kb)
-
-        case "организатор":
-            kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            kb2 = types.InlineKeyboardMarkup()
-            btn1 = types.InlineKeyboardButton("Мои мероприятия", callback_data="myevents")
-            btn2 = types.InlineKeyboardButton("Создать", callback_data="crevent")
-            btn3 = types.InlineKeyboardButton("Редактировать", callback_data="edevent")
-            btn4 = types.InlineKeyboardButton("Удалить", callback_data="delevent")
-            
-            kb.add("На главную")
-            kb2.add(btn1);
-            kb2.add(btn2);
-            kb2.add(btn3, btn4);
-
-         
-            bot.send_message(message.chat.id, "Выберите действие", reply_markup=kb2)
-            bot.send_message(message.chat.id, "Действия:", reply_markup=kb)
-
-        case "модератор":
-            kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
-            kb.add("Мероприятия на модерацию")
-            kb.add("На главную")
-         
-            bot.send_message(message.chat.id, "Выберите нужное действие", reply_markup=kb)
+    else:
+        bot.delete_message(usr_id, message.message_id) # удаление пользовательской команды
 
 
-        # 2 страница организатор
-        case "стать организатором":
-            user = all_users[message.chat.id];
-            user.status = "Организатор"
-            bot.send_message(message.chat.id, "Теперь вы организатор")
-            profil(message)
-
-        case "стать модератором":
-            user = all_users[message.chat.id];
-            user.status = "Модератор"
-            bot.send_message(message.chat.id, "Теперь вы модератор")
-            profil(message)
-
-
-        # 2 страница польщователь
-        case "сегодня":
-            now = datetime.datetime.now()
-            arr = []
-            for i in all_events:
-                evn = all_events[i][1]
-                if(evn.start_datetime.day == now.day and evn.start_datetime.time() > now.time()):
-                    arr.append(evn);
-            if len(arr) == 0:
-                bot.send_message(message.chat.id, "На сегодня мероприятий не найдено")
-                
-            else:
-                arr = sorted(arr, key=lambda x: x.start_datetime, reverse=True)
-                bot.send_message(message.chat.id, "Вот мероприятия на сегодня:")
-                
-                send_events(arr, message.chat.id)
-
-        case "завтра":
-            now = datetime.datetime.now()
-            arr = []
-            for i in all_events:
-                evn = all_events[i][1]
-                if((evn.start_datetime.day - 1) == now.day):
-                    arr.append(evn);
-            if len(arr) == 0:
-                bot.send_message(message.chat.id, "На завтра мероприятий не найдено")
-                
-            else:
-                arr = sorted(arr, key=lambda x: x.start_datetime, reverse=True)
-                bot.send_message(message.chat.id, "Вот мероприятия на завтра:")
-                
-                send_events(arr, message.chat.id)
-
-        case "на этой недели":
-            now = datetime.datetime.now()
-            now_week = now.isocalendar()[1]
-
-            arr = []
-            for i in all_events:
-                evn = all_events[i][1]
-                if(evn.start_datetime > now and now_week == evn.start_datetime.isocalendar()[1]):
-                    arr.append(evn);
-            if len(arr) == 0:
-                bot.send_message(message.chat.id, "На этой недели мероприятий не найдено")
-                
-            else:
-                arr = sorted(arr, key=lambda x: x.start_datetime, reverse=True)
-        
-                bot.send_message(message.chat.id, "Вот мероприятия на этой недели:")
-
-                send_events(arr, message.chat.id)
-                
-        case "поиск по тегам":
-            if len(all_tags) == 0:
-                bot.send_message(message.chat.id, "Тегов пока нет, так как организаторы не создали не одного мероприятия");
-                return;
-
-            all_users[message.chat.id].searchtags = [];
-            kb2 = types.InlineKeyboardMarkup(row_width=2)
-
-            for i in all_tags:
-                kb2.add(types.InlineKeyboardButton(i, callback_data=f"addtagtousersearch {i}"))
-
-            kb2.add(types.InlineKeyboardButton("Поиск", callback_data=f"searchfortags"))
-            bot.send_message(message.chat.id, "Теги:", reply_markup=kb2);
-
-        case "поиск по дням":
-            kb2 = types.InlineKeyboardMarkup()
-            btn1 = types.InlineKeyboardButton("Понедельник", callback_data=f"findweekday {1}")
-            btn2 = types.InlineKeyboardButton("Вторник",     callback_data=f"findweekday {2}")
-            btn3 = types.InlineKeyboardButton("Среда",       callback_data=f"findweekday {3}")
-            btn4 = types.InlineKeyboardButton("Четверг",     callback_data=f"findweekday {4}")
-            btn5 = types.InlineKeyboardButton("Пятница",     callback_data=f"findweekday {5}")
-            btn6 = types.InlineKeyboardButton("Суббота",     callback_data=f"findweekday {6}")
-            btn7 = types.InlineKeyboardButton("Воскресенье", callback_data=f"findweekday {7}")
-            kb2.add(btn1)
-            kb2.add(btn2)
-            kb2.add(btn3)
-            kb2.add(btn4)
-            kb2.add(btn5)
-            kb2.add(btn6)
-            kb2.add(btn7)
-            bot.send_message(message.chat.id, "Выберите день недели", reply_markup=kb2)
-            
-        case "поиск по радиусу":
-            kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            btn = types.KeyboardButton("Определить местоположение", request_location=True)
-            kb.add(btn)
-            if isinstance(all_users[message.chat.id].last_location, list):
-                kb.add("500 метров", "1 километр", "3 километра", "5 километров")
-            kb.add("На главную")
-
-            bot.send_message(message.chat.id, "Выберите радиус поиска", reply_markup=kb)
-
-            
+    match message.text.lower():            
         # 2 страница модератор
         case "мероприятия на модерацию":
             if(len(all_events_on_moderate) > 0):
@@ -932,4 +992,4 @@ def main():
 
 
 Thread(target=main, args=()).start()
-bot.polling()
+bot.polling() 
