@@ -4,7 +4,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>91447e36-c942-4912-8dd1-e66cc6366ce0</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>BotBlip.py</StartupFile>
+    <StartupFile>Main.py</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
@@ -22,7 +22,16 @@
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="BotBlip.py" />
+    <Compile Include="Main.py" />
+    <Compile Include="Event.py" />
+    <Compile Include="Functions.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="RecieveCommands.py" />
+    <Compile Include="RecieveText.py" />
+    <Compile Include="Settings.py" />
+    <Compile Include="Two.py" />
+    <Compile Include="User.py" />
   </ItemGroup>
   <ItemGroup>
     <Interpreter Include="env\">
